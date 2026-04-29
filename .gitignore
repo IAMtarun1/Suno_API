@@ -1,0 +1,18 @@
+# ─── Environment ────────────────────────────────────────────
+.env
+venv/
+__pycache__/
+*.pyc
+
+# ─── Secrets ────────────────────────────────────────────────
+config/suno_cookies.json
+
+# ─── Generated files ───────────────────────────────────────
+downloads/*.mp3
+logs/*.log
+
+# ─── IDE ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
