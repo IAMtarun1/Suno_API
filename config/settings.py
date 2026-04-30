@@ -23,6 +23,8 @@ ALLOW_LOCAL_CURL = os.getenv("ALLOW_LOCAL_CURL", "false").lower() == "true"
 RATE_LIMIT_SEC = int(os.getenv("RATE_LIMIT_SEC", "60"))
 SUNO_HEADLESS = os.getenv("SUNO_HEADLESS", "false").lower() == "true"
 PORT = int(os.getenv("PORT", "5000"))
+FALLBACK_TO_MOCK_ON_FAILURE = os.getenv("FALLBACK_TO_MOCK_ON_FAILURE", "true").lower() == "true"
+USE_AI_PROMPT_ENHANCER = os.getenv("USE_AI_PROMPT_ENHANCER", "false").lower() == "true"
 
 # Ensure required directories exist
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)

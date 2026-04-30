@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
@@ -7,8 +8,10 @@ SUNO_URL = "https://suno.com/create"
 PROFILE_DIR = os.path.abspath("chrome_profile")
 DOWNLOAD_DIR = os.path.abspath("downloads")
 
+
 class SunoCreditsError(Exception):
     pass
+
 
 class SunoPlaywrightBot:
     def __init__(self, headless=False):
@@ -33,7 +36,7 @@ class SunoPlaywrightBot:
 
         current_url = self.page.url.lower()
 
-        if "login" not in current_url and "sign-in" not in current_url and "/create" in current_url:
+        if "/create" in current_url and "login" not in current_url and "sign-in" not in current_url:
             print("✅ Existing Suno session detected.")
             return
 
@@ -50,8 +53,62 @@ class SunoPlaywrightBot:
         print("✅ Manual login complete. Session saved.")
 
     def open_create(self):
-        self.page.goto(SUNO_URL)
-        self.page.wait_for_timeout(3000)
+        """
+        Open Suno create page and retry if Suno redirects to discover/home.
+        """
+        for attempt in range(3):
+            self.page.goto(SUNO_URL)
+            self.page.wait_for_timeout(3000)
+
+            current_url = self.page.url.lower()
+            print(f"Open create attempt {attempt + 1}: {self.page.url}")
+
+            if "/create" in current_url:
+                return
+
+            print(f"Not on create page yet. Retrying... Current URL: {self.page.url}")
+            self.page.wait_for_timeout(2000)
+
+        raise Exception(f"Could not open Suno create page. Current URL: {self.page.url}")
+
+    def check_out_of_credits(self):
+        """
+        Detects both:
+        - Out of Credits modal
+        - Create button replaced by Out of Credits banner/button
+        """
+        try:
+            body_text = self.page.locator("body").inner_text(timeout=5000)
+        except Exception:
+            body_text = ""
+
+        lower_text = body_text.lower()
+
+        if "out of credits" not in lower_text and "you're out of credits" not in lower_text:
+            return
+
+        refresh_time = self.extract_credit_refresh_time(body_text)
+
+        if refresh_time:
+            raise SunoCreditsError(
+                f"Suno is out of credits. Credits refresh in {refresh_time}."
+            )
+
+        raise SunoCreditsError(
+            "Suno is out of credits. Please wait for credits to refresh."
+        )
+
+    def extract_credit_refresh_time(self, text):
+        """
+        Extract timer like:
+        1h:39m:21s
+        01h:09m:05s
+        """
+        match = re.search(r"\d+\s*h\s*:\s*\d+\s*m\s*:\s*\d+\s*s", text)
+        if match:
+            return match.group(0).replace(" ", "")
+
+        return ""
 
     def find_prompt_box(self):
         textareas = self.page.locator("textarea")
@@ -81,25 +138,38 @@ class SunoPlaywrightBot:
 
         raise Exception("Could not find visible Suno prompt textarea")
 
-    def check_out_of_credits(self):
+    def get_create_button(self):
         """
-        Detect Suno paywall / out-of-credits modal.
+        Returns the Create button if present and usable.
+        If Suno is out of credits, raises SunoCreditsError.
         """
-        try:
-            out_of_credits = self.page.get_by_text("Out of Credits", exact=False)
+        self.check_out_of_credits()
 
-            if out_of_credits.count() > 0 and out_of_credits.first.is_visible():
-                raise SunoCreditsError(
-                    "Suno account is out of credits."
-                )
+        create_button = self.page.locator('button[aria-label="Create song"]')
 
-        except Exception:
-            return
+        if create_button.count() == 0:
+            self.check_out_of_credits()
+            raise Exception("Create button not found.")
+
+        button = create_button.first
+
+        if not button.is_visible():
+            self.check_out_of_credits()
+            raise Exception("Create button is not visible.")
+
+        if not button.is_enabled():
+            self.check_out_of_credits()
+            raise Exception("Create button is disabled.")
+
+        return button
 
     def generate_song(self, prompt: str) -> str:
         self.open_create()
 
         print("Current page:", self.page.url)
+
+        # Check BEFORE putting prompt in box
+        self.check_out_of_credits()
 
         prompt_box = self.find_prompt_box()
         prompt_box.click()
@@ -107,23 +177,23 @@ class SunoPlaywrightBot:
 
         self.page.wait_for_timeout(1000)
 
-        create_button = self.page.locator('button[aria-label="Create song"]')
-        create_button.wait_for(state="visible", timeout=10000)
-
-        if not create_button.is_enabled():
-            raise Exception("Create button is disabled after filling prompt.")
-
-        create_button.click()
-        print("Song generation triggered.")
-
-        # Wait a few seconds for Suno to either begin generation or show credit modal
-        self.page.wait_for_timeout(4000)
-
-        # Detect paywall
+        # Check again because Suno may reveal credit state after typing
         self.check_out_of_credits()
 
-        # Continue normal wait
-        self.page.wait_for_timeout(8000)
+        create_button = self.get_create_button()
+        create_button.click()
+
+        print("Song generation triggered.")
+
+        # Give Suno time to either start cards or show credits modal/banner
+        self.page.wait_for_timeout(5000)
+
+        self.check_out_of_credits()
+
+        # Continue normal generation wait
+        self.page.wait_for_timeout(7000)
+
+        return self.wait_and_download_latest_song()
 
     def wait_and_download_latest_song(self, timeout_sec=420):
         print("Waiting until newest song is downloadable...")
@@ -136,9 +206,11 @@ class SunoPlaywrightBot:
             attempt += 1
 
             try:
+                self.check_out_of_credits()
                 self.close_open_menus()
 
                 more_button = self.get_newest_song_menu_button()
+
                 if more_button is None:
                     print("No song menu found yet. Waiting...")
                     time.sleep(15)
@@ -155,12 +227,11 @@ class SunoPlaywrightBot:
                     time.sleep(15)
                     continue
 
-                # Download is a hover menu. If song is still processing,
-                # MP3 / WAV / Video will NOT appear.
                 print("Hovering Download menu item...")
                 download_item.first.hover()
                 self.page.wait_for_timeout(1500)
 
+                # If generation is not complete, MP3 may not be enabled/visible.
                 mp3_option = self.page.get_by_text("MP3", exact=False)
 
                 if mp3_option.count() == 0 or not mp3_option.first.is_visible():
@@ -171,11 +242,17 @@ class SunoPlaywrightBot:
 
                 print("MP3 option visible. Starting download...")
 
-                with self.page.expect_download(timeout=90000) as download_info:
-                    mp3_option.first.click()
+                with self.page.expect_download(timeout=20000) as download_info:
+                    try:
+                        mp3_option.first.click(timeout=5000)
+                    except Exception:
+                        print("MP3 visible but not clickable yet. Song still processing.")
+                        self.close_open_menus()
+                        time.sleep(20)
+                        continue
+
                     self.page.wait_for_timeout(1500)
 
-                    # Confirmation modal may appear.
                     download_anyway = self.page.get_by_text("Download Anyway", exact=False)
 
                     if download_anyway.count() > 0 and download_anyway.first.is_visible():
@@ -191,6 +268,9 @@ class SunoPlaywrightBot:
                 print("Downloaded:", save_path)
                 return save_path
 
+            except SunoCreditsError:
+                raise
+
             except PlaywrightTimeoutError as e:
                 print("Timeout while checking download. Not ready yet:", e)
                 self.close_open_menus()
@@ -204,10 +284,6 @@ class SunoPlaywrightBot:
         raise TimeoutError("Song was not downloadable before timeout.")
 
     def get_newest_song_menu_button(self):
-        """
-        Gets the first visible three-dot menu.
-        Suno generally shows newest generated songs at the top of the workspace list.
-        """
         more_buttons = self.page.locator("button[aria-label*='More']")
         count = more_buttons.count()
 
@@ -247,6 +323,7 @@ def create_song_from_prompt(prompt, headless=False):
 
     finally:
         bot.close()
+
 
 if __name__ == "__main__":
     bot = SunoPlaywrightBot(headless=False)
