@@ -8,6 +8,7 @@ import os
 import logging
 from dotenv import load_dotenv
 
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -16,6 +17,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 COOKIE_FILE = os.path.join(BASE_DIR, "config", "suno_cookies.json")
+MOCK_SUNO = os.getenv("MOCK_SUNO", "false").lower() == "true"
+VALIDATE_TWILIO_SIGNATURE = os.getenv("VALIDATE_TWILIO_SIGNATURE", "true").lower() == "true"
+ALLOW_LOCAL_CURL = os.getenv("ALLOW_LOCAL_CURL", "false").lower() == "true"
+RATE_LIMIT_SEC = int(os.getenv("RATE_LIMIT_SEC", "60"))
+SUNO_HEADLESS = os.getenv("SUNO_HEADLESS", "false").lower() == "true"
+PORT = int(os.getenv("PORT", "5000"))
 
 # Ensure required directories exist
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)

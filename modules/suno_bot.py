@@ -72,7 +72,16 @@ class SunoBot:
             options.add_argument("--window-size=1920,1080")
 
         # ── Launch browser ──────────────────────────────────────
-        service = Service(ChromeDriverManager().install())
+        driver_path = ChromeDriverManager().install()
+
+        # webdriver_manager sometimes returns THIRD_PARTY_NOTICES.chromedriver by mistake
+        if "THIRD_PARTY_NOTICES" in driver_path:
+            driver_dir = os.path.dirname(driver_path)
+            driver_path = os.path.join(driver_dir, "chromedriver")
+
+        os.chmod(driver_path, 0o755)
+
+        service = Service(driver_path)
         self.driver = webdriver.Chrome(service=service, options=options)
         self.wait = WebDriverWait(self.driver, 20)
 
@@ -227,6 +236,9 @@ class SunoBot:
         self._random_delay(1, 2)
 
         # ── Click generate ──────────────────────────────────────
+        print("Current URL:", self.driver.current_url)
+        print("Page title:", self.driver.title)
+        input("Check the Suno page manually. Press Enter to continue...")
         gen_btn = self.wait.until(
             EC.element_to_be_clickable(
                 (By.CSS_SELECTOR, selectors.GENERATE_BUTTON)

@@ -1,18 +1,40 @@
-# ─── Environment ────────────────────────────────────────────
-.env
+# Python virtual environment
 venv/
+.env
+
+# Playwright / browser session
+chrome_profile/
+playwright/.cache/
+
+# Generated files
+downloads/
+logs/
+*.mp3
+*.wav
+*.mp4
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# ─── Secrets ────────────────────────────────────────────────
-config/suno_cookies.json
-
-# ─── Generated files ───────────────────────────────────────
-downloads/*.mp3
-logs/*.log
-
-# ─── IDE ────────────────────────────────────────────────────
-.vscode/
+# PyCharm / IDE
 .idea/
-*.swp
+.vscode/
+
+# macOS
 .DS_Store
+
+# Test / temp
+*.log
+tmp/
+temp/
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Selenium / webdriver
+*.chromedriver
